@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.signal import ricker
 
 L = 1000
 T = 1                  
@@ -12,30 +11,28 @@ t = np.arange(0,T+dt, dt)
 
 nx = len(x) 
 nt = len(t)
-f0 = 30
-n = 2
 c = 1500
-
-def ricker(t, f0):
-    return (1 - 2 * (np.pi * f0* t)**2)*np.exp(-(np.pi * f0* t)**2)
-
+#caso c seja uma função
 #def c(x):
-    return 100
+    #return 100
 
-u = np.zeros(nx)
-u_anterior = np.zeros(nx)
-u_posterior = np.zeros(nx)
+#ricker
+f0 = 30
+pi = np.pi
+td  = t - 2*np.sqrt(pi)/f0
+fcd = f0/(np.sqrt(pi)*3) 
+source = (1 - 2*pi*(pi*fcd*td)*(pi*fcd*td))*np.exp(-pi*(pi*fcd*td)*(pi*fcd*td))
 
-F = np.zeros(nt)
-tlag = 0.04
-
-for i in range(nt):
-    F[i] = ricker(t[i]- tlag, f0)
-
-plt.plot(t, F)
+plt.plot(t,source)
+plt.xlabel('tempo')
 plt.show()
 
-solution = np.zeros((nx, nt))
+
+u_anterior = np.zeros(nx)
+u = np.zeros(nx)
+u_posterior = np.zeros(nx)
+
+
 isx = int(nx/2)
 recx = [800]
 recindex = np.zeros(len(recx))
@@ -44,39 +41,35 @@ for i in range(len(recx)):
 
 sism = np.zeros((len(recx),nt))
 
-for t in range(nt):
-    for i in range(nx-1):
+for k in range(nt):
+    u[isx] = u[isx] + source[k]*c
+    for i in range(1,nx-1):
         R = (c*dt/dx)**2
-        u_posterior[isx] = F[t]
-        u_posterior[i] += R*u[i-1] - 2*(R-1)*u[i] + R*u[i+1] - u_anterior[i]
+        u_posterior[i] = R*u[i-1] - 2*(R-1)*u[i] + R*u[i+1] - u_anterior[i]
+
+    u_anterior = np.copy(u)
+    u = np.copy(u_posterior)
         
-    for j, k in range(len(recindex)):
-        sism[j, t] = u[recindex[k]]
-    
-    u_anterior = u.copy()
-    u = u_posterior.copy()
-    
-    solution[:, t] = u
+    for j, idx in enumerate(recindex):
+        sism[j, k] = u[int(idx)]
 
-    if t%200==0:
-        plt.plot(x, solution[:,t], label=f"tempo(t={t}s)")
-        plt.xlabel("x")
-        plt.ylabel("u")
-        plt.legend()
-        plt.grid(True)
+    if k%200==0:
+        plt.plot(x, u)
+        plt.xlabel('x (m) - time %2.4f' %(k*dt))
+        plt.ylabel('Amplitude')
         plt.show()
+    
 
-
-plt.plot(t, sism)
-plt.title("Sismograma no Receptor (x=80 m)")
+plt.plot(t, sism[0, :])
+plt.title("Sism (x=80 m)")
 plt.xlabel("Tempo (s)")
 plt.ylabel("Amplitude")
 plt.grid(True)
 plt.show()
 
-k = np.max(np.abs(solution))
+k = np.max(np.abs(sism))
 
-plt.imshow(solution, cmap="seismic", aspect="auto", extent=[0, L, T, 0], vmin=-k, vmax=k)
+plt.imshow(sism, cmap="seismic", aspect="auto", extent=[0, L, T, 0], vmin=-k, vmax= k)
 plt.colorbar(label='Amplitude')
 plt.title("Sismograma")
 plt.tight_layout()
