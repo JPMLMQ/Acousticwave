@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-
 def parametros(L,T,dx,dt):
     x = np.arange(0,L+dx, dx)
     t = np.arange(0,T+dt, dt)
@@ -32,22 +31,38 @@ def rec(recx,dx):
         recindex[i] = int(recx[i] / dx)
     return recindex 
 
-def marcha_no_tempo(u_anterior, u, u_posterior, source, c, dt, dx,nt,nx,recx,recindex):
+def marcha_no_tempo(u_anterior, u, u_posterior, source, c, dt, dx, nt, nx, recx, recindex):
+    isx = int(nx / 2)
+    sism = np.zeros((len(recx), nt))  
+    R = (c*dt/dx)**2
+    if R>1:
+        raise ValueError("O fator de estabilidade é maior que 1. Ajuste dx ou dt.")
+    for k in range(nt):
+        u[isx] = u[isx] + source[k]*c
+        for i in range(1, nx - 1):
+            u_posterior[i] = R*u[i-1] - 2*(R-1)*u[i] + R*u[i+1] - u_anterior[i]
+
+        u_anterior = np.copy(u)
+        u = np.copy(u_posterior)
+
+        for j, idx in enumerate(recindex):
+            sism[j, k] = u[int(idx)]
+
+    return sism
+
+def animacao(u_anterior, u, u_posterior, source, c, dt, dx,nt,nx,recx,recindex):
     isx = int(nx/2)
-    sism = np.zeros((len(recx),nt))
+    plt.ion()
     for k in range(nt):
         u[isx] = u[isx] + source[k]*c
         for i in range(1,nx-1):
             R = (c*dt/dx)**2
             if R > 1:
-                print(" O fator de estabilidade é superior a 1. Ajuste dx ou dt.")
+                raise ValueError("O fator de estabilidade é maior que 1. Ajuste dx ou dt.")
             else:
                 u_posterior[i] = R*u[i-1] - 2*(R-1)*u[i] + R*u[i+1] - u_anterior[i]
         u_anterior = np.copy(u)
         u = np.copy(u_posterior)
-            
-        for j, idx in enumerate(recindex):
-            sism[j, k] = u[int(idx)]
 
         if k % 200 == 0:
             plt.clf()  
@@ -57,8 +72,9 @@ def marcha_no_tempo(u_anterior, u, u_posterior, source, c, dt, dx,nt,nx,recx,rec
             plt.title(f'Tempo: {k * dt:.4f} s')
             plt.grid(True)
             plt.pause(0.05)
-    return sism
-
+    plt.ioff()
+    plt.show()
+  
 def plot_receptor(t,sism):
     plt.plot(t, sism[0, :])
     plt.title("Sism (x=80 m)")
@@ -76,7 +92,6 @@ def plot_sismograma(sism):
     plt.show()
 
 
-
 L = 1000
 T = 1                  
 dx = 0.5         
@@ -92,9 +107,7 @@ plt.show()
 u_anterior, u, u_posterior = ondas(nx)
 recx = [800]
 recindex = rec(recx, dx)
-plt.ion()
-sism = marcha_no_tempo(u_anterior, u, u_posterior, source, c, dt, dx,nt,nx,recx,recindex)
-plt.ioff()
-plt.show()
+sism = marcha_no_tempo(u_anterior, u, u_posterior, source, c, dt, dx, nt, nx, recx, recindex)
+animacao(u_anterior, u, u_posterior, source, c, dt, dx,nt,nx,recx,recindex)
 plot_receptor(t,sism)
 plot_sismograma(sism)
