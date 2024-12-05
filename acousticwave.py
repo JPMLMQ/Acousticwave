@@ -1,69 +1,71 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import numba
+from numba import jit
 
-def parametros(L,T,dx,dt):
-    x = np.arange(0,L+dx, dx)
-    t = np.arange(0,T+dt, dt)
+def parametros(L, T, dx, dt):
+    x = np.arange(0, L + dx, dx)
+    t = np.arange(0, T + dt, dt)
     nx = len(x) 
     nt = len(t)
-    return x,t,nx,nt
+    return x, t, nx, nt
 
-#caso c seja uma função
-#def c(x):
-    #return 2x-3
-
-def ricker(f0,t):
+def ricker(f0, t):
     pi = np.pi
-    td  = t - 2*np.sqrt(pi)/f0
-    fcd = f0/(np.sqrt(pi)*3) 
-    source = (1 - 2*pi*(pi*fcd*td)*(pi*fcd*td))*np.exp(-pi*(pi*fcd*td)*(pi*fcd*td))
+    td  = t - 2 * np.sqrt(pi) / f0
+    fcd = f0 / (np.sqrt(pi) * 3) 
+    source = (1 - 2 * pi * (pi * fcd * td) * (pi * fcd * td)) * np.exp(-pi * (pi * fcd * td) * (pi * fcd * td))
     return source
 
 def ondas(nx):
     u_anterior = np.zeros(nx)
     u = np.zeros(nx)
     u_posterior = np.zeros(nx)
-    return u_anterior,u,u_posterior
+    return u_anterior, u, u_posterior
 
-def rec(recx,dx):
+def rec(recx, dx):
     recindex = np.zeros(len(recx))
     for i in range(len(recx)):
         recindex[i] = int(recx[i] / dx)
     return recindex 
 
+@numba.jit(parallel=True)
+def marcha_no_espaço(u_anterior, u, u_posterior, R, nx):
+    for i in numba.prange(1, nx - 1):
+        u_posterior[i] = R*u[i-1] - 2*(R-1)*u[i] + R*u[i+1] - u_anterior[i]
+    return u_posterior
+
 def marcha_no_tempo(u_anterior, u, u_posterior, source, c, dt, dx, nt, nx, recx, recindex):
-    isx = int(nx / 2)
-    sism = np.zeros((len(recx), nt))  
+    isx = int(nx/2)
+    sism = np.zeros((len(recx), nt)) 
     R = (c*dt/dx)**2
     if R>1:
         raise ValueError("O fator de estabilidade é maior que 1. Ajuste dx ou dt.")
-    for k in range(nt):
-        u[isx] = u[isx] + source[k]*c
-        for i in range(1, nx - 1):
-            u_posterior[i] = R*u[i-1] - 2*(R-1)*u[i] + R*u[i+1] - u_anterior[i]
-
+        
+    for k in numba.prange(nt):
+        u[isx]= u[isx] + source[k]*c
+        u_posterior = marcha_no_espaço(u_anterior,u, u_posterior, R,nx)
         u_anterior = np.copy(u)
         u = np.copy(u_posterior)
 
         for j, idx in enumerate(recindex):
             sism[j, k] = u[int(idx)]
-
+        
     return sism
 
-def animacao(u_anterior, u, u_posterior, source, c, dt, dx,nt,nx,recx,recindex):
-    isx = int(nx/2)
+def animacao(u_anterior, u, u_posterior, source, c, dt, dx, nt, nx, recx, recindex):
+    isx = int(nx / 2)
     plt.ion()
     for k in range(nt):
-        u[isx] = u[isx] + source[k]*c
-        for i in range(1,nx-1):
-            R = (c*dt/dx)**2
-            if R > 1:
+        u[isx] = u[isx] + source[k] * c
+        for i in range(1, nx - 1):
+            R = (c * dt / dx) ** 2
+            if R>1:
                 raise ValueError("O fator de estabilidade é maior que 1. Ajuste dx ou dt.")
             else:
-                u_posterior[i] = R*u[i-1] - 2*(R-1)*u[i] + R*u[i+1] - u_anterior[i]
+                u_posterior[i] = R * u[i - 1] - 2 * (R - 1) * u[i] + R * u[i + 1] - u_anterior[i]
         u_anterior = np.copy(u)
         u = np.copy(u_posterior)
-
         if k % 200 == 0:
             plt.clf()  
             plt.plot(x, u)  
@@ -74,18 +76,19 @@ def animacao(u_anterior, u, u_posterior, source, c, dt, dx,nt,nx,recx,recindex):
             plt.pause(0.05)
     plt.ioff()
     plt.show()
-  
-def plot_receptor(t,sism):
-    plt.plot(t, sism[0, :])
-    plt.title("Sism (x=80 m)")
-    plt.xlabel("Tempo (s)")
-    plt.ylabel("Amplitude")
-    plt.grid(True)
-    plt.show()
+
+def plot_receptor(t, sism, recx):
+    for i in range(len(recx)):
+        plt.plot(t, sism[i, :])
+        plt.title(f"Sism (x={recx[i]}m)")
+        plt.xlabel("Tempo (s)")
+        plt.ylabel("Amplitude")
+        plt.grid(True)
+        plt.show()
 
 def plot_sismograma(sism):
     k = np.max(np.abs(sism))
-    plt.imshow(sism, cmap="seismic", aspect="auto", extent=[0, L, T, 0], vmin=-k, vmax= k)
+    plt.imshow(sism, cmap="seismic", aspect="auto", extent=[0, L, T, 0], vmin=-k, vmax=k)
     plt.colorbar(label='Amplitude')
     plt.title("Sismograma")
     plt.tight_layout()
@@ -93,21 +96,21 @@ def plot_sismograma(sism):
 
 
 L = 1000
-T = 1                  
+T = 1                   
 dx = 0.5         
 dt = 0.0002 
 c = 1500 
-#se c for uma função
-#c = c(1500)  
-x,t,nx,nt = parametros(L,T,dx,dt)
+x, t, nx, nt = parametros(L, T, dx, dt)
 f0 = 30
-source = ricker(f0,t)
-plt.plot(t,source)
-plt.show()
+source = ricker(f0, t)
+plt.plot(t, source)
 u_anterior, u, u_posterior = ondas(nx)
 recx = [800]
 recindex = rec(recx, dx)
 sism = marcha_no_tempo(u_anterior, u, u_posterior, source, c, dt, dx, nt, nx, recx, recindex)
-animacao(u_anterior, u, u_posterior, source, c, dt, dx,nt,nx,recx,recindex)
-plot_receptor(t,sism)
+animacao(u_anterior, u, u_posterior, source, c, dt, dx, nt, nx, recx, recindex)
+plot_receptor(t, sism,recx)
 plot_sismograma(sism)
+
+
+
