@@ -4,10 +4,10 @@ import numba
 from numba import jit
 
 def parametros(L, T, dx, dt):
-    x = np.arange(0, L + dx, dx)
-    t = np.arange(0, T + dt, dt)
-    nx = len(x) 
-    nt = len(t)
+    nx = int(L/dx) + 1
+    nt = int(T/dt) + 1
+    x = np.linspace(0, L, nx)
+    t = np.linspace(0, T, nt)
     return x, t, nx, nt
 
 def ricker(f0, t):
@@ -37,7 +37,7 @@ def marcha_no_espaço(u_anterior, u, u_posterior, R, nx):
 
 def marcha_no_tempo(u_anterior, u, u_posterior, source, c, dt, dx, nt, nx, recx, recindex):
     isx = int(nx/2)
-    sism = np.zeros((len(recx), nt)) 
+    sism = np.zeros((nt, len(recx))) 
     R = (c*dt/dx)**2
     if R>1:
         raise ValueError("O fator de estabilidade é maior que 1. Ajuste dx ou dt.")
@@ -49,11 +49,11 @@ def marcha_no_tempo(u_anterior, u, u_posterior, source, c, dt, dx, nt, nx, recx,
         u = np.copy(u_posterior)
 
         for j, idx in enumerate(recindex):
-            sism[j, k] = u[int(idx)]
+            sism[k, j] = u[int(idx)]
         
     return sism
 
-def animacao(u_anterior, u, u_posterior, source, c, dt, dx, nt, nx, recx, recindex):
+def animacao(u_anterior, u, u_posterior, source, c, dt, dx, nt, nx):
     isx = int(nx / 2)
     plt.ion()
     for k in range(nt):
@@ -79,7 +79,7 @@ def animacao(u_anterior, u, u_posterior, source, c, dt, dx, nt, nx, recx, recind
 
 def plot_receptor(t, sism, recx):
     for i in range(len(recx)):
-        plt.plot(t, sism[i, :])
+        plt.plot(t, sism[:, i])
         plt.title(f"Sism (x={recx[i]}m)")
         plt.xlabel("Tempo (s)")
         plt.ylabel("Amplitude")
@@ -108,7 +108,7 @@ u_anterior, u, u_posterior = ondas(nx)
 recx = [800]
 recindex = rec(recx, dx)
 sism = marcha_no_tempo(u_anterior, u, u_posterior, source, c, dt, dx, nt, nx, recx, recindex)
-animacao(u_anterior, u, u_posterior, source, c, dt, dx, nt, nx, recx, recindex)
+animacao(u_anterior, u, u_posterior, source, c, dt, dx, nt, nx)
 plot_receptor(t, sism,recx)
 plot_sismograma(sism)
 
