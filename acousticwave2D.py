@@ -13,12 +13,12 @@ def parametros(L, H, T, dx, dz, dt):
     return x, z, t, nx, nz, nt
     
 @numba.jit(parallel=True)
-def c(nx, nz):
-    c = np.zeros((nx,nz))
+def v(nx, nz):
+    v = np.zeros((nx,nz))
     for i in numba.prange(nx):
         for j in numba.prange(nz):
-            c[i, j] = 1500
-    return c
+            v[i, j] = 1500
+    return v
 
 def ricker(f0, t):
     pi = np.pi
@@ -54,7 +54,7 @@ def marcha_no_espaço(u_anterior, u, u_posterior, nx, nz, c, dt, dx, dz):
             u_posterior[i,j] = 1/12 * (a[i,j]*(u[i-2,j]+u[i+2,j]-16*(u[i-1,j]+u[i+1,j])+30*u[i,j])+b[i,j]*(u[i,j-2]+u[i,j+2]-16*(u[i,j-1]+u[i,j+1])+30*u[i,j])+2*u[i,j]-u_anterior[i,j])
     return u_posterior
 
-def marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, recx, recindex):
+def marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, c, recx, recindex):
     isx = int(nx/2)
     isz = int(nz/2)
     sism = np.zeros((nt, len(recx)))
@@ -91,19 +91,19 @@ def plot_sismograma(sism):
     plt.show()
 
 
-L = 100
+L = 1000
 T = 1    
-H = 100
+H = 1000
 dz = 0.5               
 dx = 0.5         
-dt = 0.002 
+dt = 0.0002 
 x, z, t, nx, nz, nt = parametros(L, H, T, dx, dz, dt)
-c = c(nx,nz)
+c = v(nx,nz)
 f0 = 30
 source = ricker(f0, t)
 u_anterior, u, u_posterior = ondas(nx,nz)
 recx= list(range(nx)) #lista que contém a posições dos receptores de 0 até nx
 recz = np.zeros(nz)
 recindex = rec(recx, dx, recz, dz)
-sism = marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, recx, recindex)
+sism = marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, c, recx, recindex)
 plot_sismograma(sism)
