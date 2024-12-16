@@ -12,12 +12,12 @@ def parametros(L, H, T, dx, dz, dt):
     t = np.linspace(0, T, nt)
     return x, z, t, nx, nz, nt
     
-@numba.jit(parallel=True)
-def v(nx, nz):
+@numba.jit(parallel=True, nopython=True)
+def v(nx, nz, valor =1500):
     v = np.zeros((nx,nz))
     for i in numba.prange(nx):
         for j in numba.prange(nz):
-            v[i, j] = 1500
+            v[i, j] = valor
     return v
 
 def ricker(f0, t):
@@ -33,17 +33,14 @@ def ondas(nx,nz):
     u_posterior = np.zeros((nx,nz))
     return u_anterior, u, u_posterior
 
-@numba.jit(parallel=True)
-def rec(recx, dx, recz, dz):
-    recindex = []
-    for i in numba.prange(len(recx)):
-        for j in numba.prange(len(recz)):
-            ix = int(recx[i]/dx)
-            iz = int(recz[j]/dz)
-            recindex.append((ix, iz))
+def rec(recx, dx, recz, dz): 
+    recindex = np.zeros((len(recx), 2)) 
+    for i in range(len(recx)):
+        recindex[i, 0] = int(recx[i] / dx) 
+        recindex[i, 1] = int(recz[i] / dz)  
     return recindex
 
-@numba.jit(parallel=True)
+@numba.jit(parallel=True, nopython=True)
 def marcha_no_espaço(u_anterior, u, u_posterior, nx, nz, c, dt, dx, dz):
     a = (c*dt/dx)**2
     b = (c*dt/dz)**2
@@ -51,7 +48,7 @@ def marcha_no_espaço(u_anterior, u, u_posterior, nx, nz, c, dt, dx, dz):
             raise ValueError("O fator de estabilidade é maior que 1. Ajuste dx ou dt.")
     for i in numba.prange(1, nx - 1):
         for j in numba.prange(1, nz-1):
-            u_posterior[i,j] = 1/12 * (a[i,j]*(u[i-2,j]+u[i+2,j]-16*(u[i-1,j]+u[i+1,j])+30*u[i,j])+b[i,j]*(u[i,j-2]+u[i,j+2]-16*(u[i,j-1]+u[i,j+1])+30*u[i,j])+2*u[i,j]-u_anterior[i,j])
+            u_posterior[i,j] = -1/12 * (a[i,j]*(u[i-2,j]+u[i+2,j]-16*(u[i-1,j]+u[i+1,j])+30*u[i,j])+b[i,j]*(u[i,j-2]+u[i,j+2]-16*(u[i,j-1]+u[i,j+1])+30*u[i,j]))+2*u[i,j]-u_anterior[i,j]
     return u_posterior
 
 def marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, c, recx, recindex):
@@ -102,8 +99,8 @@ c = v(nx,nz)
 f0 = 30
 source = ricker(f0, t)
 u_anterior, u, u_posterior = ondas(nx,nz)
-recx= list(range(nx)) #lista que contém a posições dos receptores de 0 até nx
-recz = np.zeros(nz)
+recx= [0, 100, 200, 300, 400] #list(range(nx)) lista que contém a posições dos receptores de 0 até nx
+recz = np.zeros(len(recx))
 recindex = rec(recx, dx, recz, dz)
 sism = marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, c, recx, recindex)
 plot_sismograma(sism)
