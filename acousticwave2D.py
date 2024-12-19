@@ -12,13 +12,13 @@ def parametros(L, H, T, dx, dz, dt):
     t = np.linspace(0, T, nt)
     return x, z, t, nx, nz, nt
     
-@numba.jit(parallel=True, nopython=True)
-def v(nx, nz, valor =1500):
-    v = np.zeros((nx,nz))
-    for i in numba.prange(nx):
-        for j in numba.prange(nz):
-            v[i, j] = valor
-    return v
+def v(nx, nz):
+    vp = np.zeros([nz,nx])
+    vp[:,:]= 1500
+    # vp[0:int(nz/4),:]= 1500
+    # vp[int(nz/4):int(nz/2),:] = 2000
+    # vp[int(nz/2):nz,:] = 3000
+    return vp
 
 def ricker(f0, t):
     pi = np.pi
@@ -28,79 +28,63 @@ def ricker(f0, t):
     return source
 
 def ondas(nx,nz):
-    u_anterior = np.zeros((nx,nz))
-    u = np.zeros((nx,nz))
-    u_posterior = np.zeros((nx,nz))
+    u_anterior = np.zeros((nz,nx))
+    u = np.zeros((nz,nx))
+    u_posterior = np.zeros((nz,nx))
     return u_anterior, u, u_posterior
-
-def rec(recx, dx, recz, dz): 
-    recindex = np.zeros((len(recx), 2)) 
-    for i in range(len(recx)):
-        recindex[i, 0] = int(recx[i] / dx) 
-        recindex[i, 1] = int(recz[i] / dz)  
-    return recindex
 
 @numba.jit(parallel=True, nopython=True)
 def marcha_no_espaço(u_anterior, u, u_posterior, nx, nz, c, dt, dx, dz):
-    a = (c*dt/dx)**2
-    b = (c*dt/dz)**2
-    if np.any(a > 1) or np.any(b > 1):
+    if np.any(((c*dt/dx)**2)> 1) or np.any(((c*dt/dz)**2)> 1):
             raise ValueError("O fator de estabilidade é maior que 1. Ajuste dx ou dt.")
-    for i in numba.prange(1, nx - 1):
-        for j in numba.prange(1, nz-1):
-            u_posterior[i,j] = -1/12 * (a[i,j]*(u[i-2,j]+u[i+2,j]-16*(u[i-1,j]+u[i+1,j])+30*u[i,j])+b[i,j]*(u[i,j-2]+u[i,j+2]-16*(u[i,j-1]+u[i,j+1])+30*u[i,j]))+2*u[i,j]-u_anterior[i,j]
+    for i in numba.prange(2, nx - 3):
+        for j in numba.prange(2, nz - 3):
+            pxx = (-u[j, i+2] + 16*u[j, i+1] - 30*u[j, i] + 16*u[j, i-1] - u[j, i-2]) / (12 * dx * dx)
+            pzz = (-u[j+2, i] + 16*u[j+1, i] - 30*u[j, i] + 16*u[j-1, i] - u[j-2, i]) / (12 * dz * dz)
+            u_posterior[j, i] = (c[j, i] ** 2) * (dt ** 2) * (pxx + pzz) + 2 * u[j, i] - u_anterior[j, i]
     return u_posterior
 
-def marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, c, recx, recindex):
+def marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, c, recx, recz,dt):
     isx = int(nx/2)
-    isz = int(nz/2)
-    sism = np.zeros((nt, len(recx)))
-    plt.ion()     
-    for k in numba.prange(nt):
-        u[isx,isz]= u[isx,isz] + source[k]*c[isx, isz]
+    isz = 0
+    sism = np.zeros((nt, nx)) 
+    fig, ax = plt.subplots(figsize=(10, 10))  
+    for k in range(nt):
+        u[isz,isx]= u[isz,isx] + source[k]*(dt*c[isz, isx])**2
         u_posterior = marcha_no_espaço(u_anterior, u, u_posterior, nx, nz, c, dt, dx, dz)
         u_anterior = np.copy(u)
         u = np.copy(u_posterior)
 
-        for j, (ix, iz) in enumerate(recindex):
-            sism[k, j] = u[iz, ix]
+        sism[k, recx] = u[recz, recx]
             
-        if k % 200 == 0:
-            plt.clf()
-            M = np.max(np.abs(u.T))
-            plt.imshow(u,  cmap="seismic", aspect="auto", extent=[0, (nx*dx)-1, (nz*dz)-1, 0], vmin=-M, vmax=M)
-            plt.colorbar(label='Amplitude')
-            plt.xlabel('x (m)')
-            plt.ylabel('z (m)')
-            plt.title(f'Tempo: {k * dt:.4f} s')
-            plt.pause(0.05)
-    plt.ioff()
-    plt.show()
+        if (k%100 == 0):    
+            ax.cla()
+            ax.imshow(u)
+            plt.pause(0.1)
+            
 
     return sism
 
 def plot_sismograma(sism):
-    k = np.max(np.abs(sism))
-    plt.imshow(sism, cmap="seismic", aspect="auto", extent=[0, L, T, 0], vmin=-k, vmax=k)
+    perc = np.percentile(sism,99)
+    plt.imshow(sism,aspect='auto',cmap='gray',vmin=-perc,vmax=perc)
     plt.colorbar(label='Amplitude')
     plt.title("Sismograma")
-    plt.tight_layout()
     plt.show()
 
 
-L = 1000
-T = 1    
-H = 1000
-dz = 0.5               
-dx = 0.5         
-dt = 0.0002 
+L = 10000
+T = 2    
+H = 3000
+dz = 5               
+dx = 5         
+dt = 0.001 
 x, z, t, nx, nz, nt = parametros(L, H, T, dx, dz, dt)
 c = v(nx,nz)
-f0 = 30
+f0 = 60
 source = ricker(f0, t)
 u_anterior, u, u_posterior = ondas(nx,nz)
-recx= [0, 100, 200, 300, 400] #list(range(nx)) lista que contém a posições dos receptores de 0 até nx
-recz = np.zeros(len(recx))
-recindex = rec(recx, dx, recz, dz)
-sism = marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, c, recx, recindex)
+recx= range(nx)
+recz = 10
+sism = marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, c, recx, recz, dt)
 plot_sismograma(sism)
