@@ -2,6 +2,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import numba
 from numba import jit
+import pandas as pd
+
+#mudanças para geometria externa
 
 def parametros(L, H, T, dx, dz, dt, N):
     nx = int(L/dx) + 1
@@ -68,7 +71,7 @@ def borda (nx,nz,fator = 0.015, N = 50):
 @numba.jit(parallel=True, nopython=True)
 def marcha_no_espaço(u_anterior, u, u_posterior, nx, nz, c, dt, dx, dz):
     if np.any(((c*dt/dx)**2)> 1) or np.any(((c*dt/dz)**2)> 1):
-            raise ValueError("O fator de estabilidade é maior que 1. Ajuste dx ou dt.")
+            raise ValueError("O fator de estabilidade é maior que 1. Ajuste dx, dz ou dt.")
     for i in numba.prange(2, nx - 3):
         for j in numba.prange(2, nz - 3):
             pxx = (-u[j, i+2] + 16*u[j, i+1] - 30*u[j, i] + 16*u[j, i-1] - u[j, i-2]) / (12 * dx * dx)
@@ -76,27 +79,27 @@ def marcha_no_espaço(u_anterior, u, u_posterior, nx, nz, c, dt, dx, dz):
             u_posterior[j, i] = (c[j, i] ** 2) * (dt ** 2) * (pxx + pzz) + 2 * u[j, i] - u_anterior[j, i]
     return u_posterior
 
-def marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, c, recx, recz,dt, A):
-    isx = int(nx/2)
-    isz = 100
+def marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, c, recx, recz,dt, A, shot_x, shot_z, dx, dz):
+    isx = np.round(shot_x / dx).astype(int)
+    isz = np.round(shot_z / dz).astype(int)
     sism = np.zeros((nt, nx)) 
     fig, ax = plt.subplots(figsize=(10, 10))  
     for k in range(nt):
-        u[isz,isx]= u[isz,isx] + source[k]*(dt*c[isz, isx])**2
-        u_posterior = marcha_no_espaço(u_anterior, u, u_posterior, nx, nz, c, dt, dx, dz) 
-        u_posterior *= A
-        u_anterior = np.copy(u) 
-        u_anterior *= A
-        u = np.copy(u_posterior)
+        for sx, sz in zip(isx, isz):
+            u[sz,sx]= u[sz,sx] + source[k]*(dt*c[sz, sx])**2
+            u_posterior = marcha_no_espaço(u_anterior, u, u_posterior, nx, nz, c, dt, dx, dz) 
+            u_posterior *= A
+            u_anterior = np.copy(u) 
+            u_anterior *= A
+            u = np.copy(u_posterior)
 
-        sism[k, recx] = u[recz, recx]
-            
-        if (k%100 == 0):    
-            ax.cla()
-            ax.imshow(u)
-            plt.pause(0.1)
-            
-
+            sism[k, recx] = u[recz, recx]
+                
+            if (k%100 == 0):    
+                ax.cla()
+                ax.imshow(u)
+                plt.pause(0.1)
+                
     return sism
 
 def plot_sismograma(sism):
@@ -107,11 +110,19 @@ def plot_sismograma(sism):
     plt.show()
 
 
-L = 10000
-T = 2    
-H = 3000
-dz = 5               
-dx = 5         
+receiverTable = pd.read_csv('d:/GitHub/Geofisica/receivers.csv')
+sourceTable = pd.read_csv('d:/GitHub/Geofisica/sources.csv')
+rec_x = receiverTable['coordx'].to_numpy()
+rec_z = receiverTable['coordz'].to_numpy()
+shot_x = sourceTable['coordx'].to_numpy()
+shot_z = sourceTable['coordz'].to_numpy()
+L = len(rec_x)
+H = len(rec_z)
+dx = 50
+dz = 50
+nx = int(L/dx) + 1
+nz = int(H/dz) + 1
+T = 2         
 dt = 0.001 
 N = 50
 x, z, t, nx, nz, nx_abc, nz_abc, nt = parametros(L, H, T, dx, dz, dt, N)
@@ -126,5 +137,8 @@ u_anterior, u, u_posterior = ondas(nx,nz)
 recx= range(nx)
 recz = N + 10
 A = borda(nx, nz, fator=0.015, N = 50)
-sism = marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, c_expand, recx, recz, dt, A)
+sism = marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, c, recx, recz,dt, A, shot_x, shot_z, dx, dz)
 plot_sismograma(sism)
+
+
+
