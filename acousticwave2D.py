@@ -80,10 +80,16 @@ def marcha_no_espaço(u_anterior, u, u_posterior, nx, nz, c, dt, dx, dz):
 def marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, c, recx, recz,dt, A, shot_x, shot_z, dx, dz):
     isx = np.round(shot_x / dx).astype(int)
     isz = np.round(shot_z / dz).astype(int)
-    sism = np.zeros((nt, nx)) 
+    sism = np.zeros((nt, nx))
+    sism_shot = []
     fig, ax = plt.subplots(figsize=(10, 10))  
-    for k in range(nt):
-        for sx, sz in zip(isx, isz):
+    for i_shot, (sx, sz) in enumerate(zip(isx, isz)):
+        u_anterior.fill(0)  
+        u.fill(0)
+        u_posterior.fill(0)
+        sism_atual = np.zeros((nt, nx))
+
+        for k in range(nt):
             u[sz,sx]= u[sz,sx] + source[k]*(dt*c[sz, sx])**2
             u_posterior = marcha_no_espaço(u_anterior, u, u_posterior, nx, nz, c, dt, dx, dz) 
             u_posterior *= A
@@ -91,14 +97,16 @@ def marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, c, recx, rec
             u_anterior *= A
             u = np.copy(u_posterior)
 
-            sism[k, recx] = u[recz, recx]
+            sism_atual[k, recx] = u[recz, recx]
+            sism[k, recx] += u[recz, recx]
                 
-            if (k%100 == 0):    
-                ax.cla()
-                ax.imshow(u)
-                plt.pause(0.1)
-                
-    return sism
+            # if (k%100 == 0):    
+            #     ax.cla()
+            #     ax.imshow(u)
+            #     plt.pause(0.1)
+
+        sism_shot.append(sism_atual)
+    return sism,sism_shot
 
 def plot_sismograma(sism):
     perc = np.percentile(sism,99)
@@ -106,6 +114,19 @@ def plot_sismograma(sism):
     plt.colorbar(label='Amplitude')
     plt.title("Sismograma")
     plt.show()
+
+def plot_shot(sism_shot):
+    sism_shot.reverse()
+    for i in range(len(sism_shot)):
+        perc = np.percentile(sism_shot[i], 99)
+        plt.imshow(sism_shot[i], aspect='auto', cmap='gray', vmin=-perc, vmax=perc)
+        plt.colorbar(label='Amplitude')
+        plt.title(" shot %s"%i)
+        plt.show()
+
+def salvar_sismograma(sism):
+    sism.tofile(f'D:/GitHub/Acousticwave/sismograma_{sism.shape}.bin')   
+    print(f"Sismograma salvo em: D:/GitHub/Acousticwave/sismograma_{sism.shape}.bin")
 
 
 receiverTable = pd.read_csv('d:/GitHub/Geofisica/receivers.csv')
@@ -135,7 +156,8 @@ u_anterior, u, u_posterior = ondas(nx,nz)
 recx= range(nx)
 recz = N + 10
 A = borda(nx, nz, fator=0.015, N = 50)
-sism = marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, c, recx, recz,dt, A, shot_x, shot_z, dx, dz)
+sism,sism_shot = marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, c, recx, recz,dt, A, shot_x, shot_z, dx, dz)
 plot_sismograma(sism)
-
+plot_shot(sism_shot)
+salvar_sismograma(sism)
 
