@@ -4,8 +4,6 @@ import numba
 from numba import jit
 import pandas as pd
 
-#mudanças para geometria externa
-
 def parametros(L, H, T, dx, dz, dt, N):
     nx = int(L/dx) + 1
     nz = int(H/dz) + 1
@@ -118,8 +116,8 @@ shot_x = sourceTable['coordx'].to_numpy()
 shot_z = sourceTable['coordz'].to_numpy()
 L = len(rec_x)
 H = len(rec_z)
-dx = 50
-dz = 50
+dx = 5
+dz = 5
 nx = int(L/dx) + 1
 nz = int(H/dz) + 1
 T = 2         
@@ -139,6 +137,5 @@ recz = N + 10
 A = borda(nx, nz, fator=0.015, N = 50)
 sism = marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, c, recx, recz,dt, A, shot_x, shot_z, dx, dz)
 plot_sismograma(sism)
-
 
 
