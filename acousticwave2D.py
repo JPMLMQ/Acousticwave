@@ -4,23 +4,23 @@ import numba
 from numba import jit
 import pandas as pd
 
-def parametros(L, H, T, dx, dz, dt, N):
-    nx = int(L/dx) + 1
-    nz = int(H/dz) + 1
-    nx_abc = nx + 2*N
-    nz_abc = nz + 2*N
-    nt = int(T/dt) + 1
-    x = np.linspace(0, L, nx)
-    z = np.linspace(0, H, nz)
-    t = np.linspace(0, T, nt)
-    return x, z, t, nx, nz, nx_abc, nz_abc, nt
-    
-def v(nx, nz, v1=1500, v2=2000, v3=3000):
-    vp = np.zeros([nz,nx])
-    vp[0:int(nz/4),:]= v1
-    vp[int(nz/4):int(nz/2),:] = v2
-    vp[int(nz/2):nz,:] = v3
+# def v(nx, nz, v1=1500, v2=2000, v3=3000):
+#     vp = np.zeros([nz,nx])
+#     vp[0:int(nz/4),:]= v1
+#     vp[int(nz/4):int(nz/2),:] = v2
+#     vp[int(nz/2):nz,:] = v3
+#     return vp
+
+def ler_modelo(caminho_arquivo, shape):
+    vp = np.fromfile(caminho_arquivo, dtype=np.float32)
+    vp = vp.reshape(shape)
+    print(f"Modelo de velocidade carregado de: {caminho_arquivo}")
     return vp
+
+def plot_modelo(vp):
+    plt.imshow(vp.T, aspect='auto', cmap='jet')
+    plt.colorbar()
+    plt.show()
 
 def expand_vp(v,nx_abc,nz_abc, N):
     v_expand = np.zeros((nz_abc, nx_abc))
@@ -50,7 +50,7 @@ def ondas(nx,nz):
     u_posterior = np.zeros((nz,nx))
     return u_anterior, u, u_posterior
 
-def borda (nx,nz,fator = 0.015, N = 50):
+def borda (nx,nz,fator = 0.015, N = 100):
     A = np.ones((nz, nx))  
     for i in range(nx):
         for j in range(nz):
@@ -68,8 +68,6 @@ def borda (nx,nz,fator = 0.015, N = 50):
 
 @numba.jit(parallel=True, nopython=True)
 def marcha_no_espaço(u_anterior, u, u_posterior, nx, nz, c, dt, dx, dz):
-    if np.any(((c*dt/dx)**2)> 1) or np.any(((c*dt/dz)**2)> 1):
-            raise ValueError("O fator de estabilidade é maior que 1. Ajuste dx, dz ou dt.")
     for i in numba.prange(2, nx - 3):
         for j in numba.prange(2, nz - 3):
             pxx = (-u[j, i+2] + 16*u[j, i+1] - 30*u[j, i] + 16*u[j, i-1] - u[j, i-2]) / (12 * dx * dx)
@@ -100,10 +98,10 @@ def marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, c, recx, rec
             sism_atual[k, recx] = u[recz, recx]
             sism[k, recx] += u[recz, recx]
                 
-            # if (k%100 == 0):    
-            #     ax.cla()
-            #     ax.imshow(u)
-            #     plt.pause(0.1)
+            if (k%100 == 0):    
+                ax.cla()
+                ax.imshow(u)
+                plt.pause(0.1)
 
         sism_shot.append(sism_atual)
     return sism,sism_shot
@@ -135,29 +133,47 @@ rec_x = receiverTable['coordx'].to_numpy()
 rec_z = receiverTable['coordz'].to_numpy()
 shot_x = sourceTable['coordx'].to_numpy()
 shot_z = sourceTable['coordz'].to_numpy()
-L = len(rec_x)
-H = len(rec_z)
-dx = 5
-dz = 5
-nx = int(L/dx) + 1
-nz = int(H/dz) + 1
-T = 2         
+
+L  = 10000
+H = 3000
+T = 2 
 dt = 0.001 
-N = 50
-x, z, t, nx, nz, nx_abc, nz_abc, nt = parametros(L, H, T, dx, dz, dt, N)
-c = v(nx,nz)
-c_expand = expand_vp(c,nx_abc,nz_abc, N)
-# plt.figure()
-# plt.imshow(c_expand,aspect='equal')
-# plt.show()
+N = 100
+nx = 383
+nz = 141
+nx_abc = nx + 2*N
+nz_abc = nz + 2*N
+dx = L/nx
+dz = H/nz
 f0 = 60
+x = np.arange(0,L+dx,dx)
+z = np.arange(0,H+dz,dz)
+t = np.arange(0,T+dt,dt)
+nt = len(t)
+c = ler_modelo('D:/GitHub/Acousticwave/marmousi_vp_383x141.bin', (383, 141))
+c_expand = expand_vp(c,nx_abc,nz_abc, N)
 source = ricker(f0, t)
+
+#critérios de dispersão e estabilidade
+vp_min= np.min(c_expand)
+vp_max = np.max(c_expand)
+lambda_min = vp_min / f0
+dx_lim = lambda_min / 10
+dt_lim = dx_lim / (np.sqrt(2) * vp_max)
+if (dt>=dt_lim and dx>=dx_lim):
+    print("Condições de estabilidade e dispersão satisfeitas")
+else:
+    print("Condições de estabilidade e dispersão não satisfeitas")
+    print("dt_critical = %f dt = %f" %(dt_lim,dt))
+    print("dx_critical = %f dx = %f" %(dx_lim,dx))
+    print("fcut = %f " %(f0))
+
+
 u_anterior, u, u_posterior = ondas(nx,nz)
 recx= range(nx)
 recz = N + 10
-A = borda(nx, nz, fator=0.015, N = 50)
+A = borda(nx, nz, fator=0.015, N = 100)
 sism,sism_shot = marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, c, recx, recz,dt, A, shot_x, shot_z, dx, dz)
 plot_sismograma(sism)
 plot_shot(sism_shot)
 salvar_sismograma(sism)
-
