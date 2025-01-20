@@ -3,24 +3,19 @@ import matplotlib.pyplot as plt
 import numba
 from numba import jit
 import pandas as pd
-
-# def v(nx, nz, v1=1500, v2=2000, v3=3000):
-#     vp = np.zeros([nz,nx])
-#     vp[0:int(nz/4),:]= v1
-#     vp[int(nz/4):int(nz/2),:] = v2
-#     vp[int(nz/2):nz,:] = v3
-#     return vp
+    
+def v(nx, nz, v1=1500, v2=2000, v3=3000):
+    vp = np.zeros([nz,nx])
+    vp[0:int(nz/4),:]= v1
+    vp[int(nz/4):int(nz/2),:] = v2
+    vp[int(nz/2):nz,:] = v3
+    return vp
 
 def ler_modelo(caminho_arquivo, shape):
     vp = np.fromfile(caminho_arquivo, dtype=np.float32)
-    vp = vp.reshape(shape)
+    vp = vp.reshape(shape).T
     print(f"Modelo de velocidade carregado de: {caminho_arquivo}")
     return vp
-
-def plot_modelo(vp):
-    plt.imshow(vp.T, aspect='auto', cmap='jet')
-    plt.colorbar()
-    plt.show()
 
 def expand_vp(v,nx_abc,nz_abc, N):
     v_expand = np.zeros((nz_abc, nx_abc))
@@ -33,7 +28,6 @@ def expand_vp(v,nx_abc,nz_abc, N):
     v_expand[0:N, nx_abc-N:nx_abc] = v[0, -1] 
     v_expand[nz_abc-N:nz_abc, 0:N] = v[-1, 0]  
     v_expand[nz_abc-N:nz_abc, nx_abc-N:nx_abc] = v[-1, -1]
-
     return v_expand
 
 
@@ -50,11 +44,11 @@ def ondas(nx,nz):
     u_posterior = np.zeros((nz,nx))
     return u_anterior, u, u_posterior
 
-def borda (nx,nz,fator = 0.015, N = 100):
+def borda (nx,nz,fator, N):
     A = np.ones((nz, nx))  
     for i in range(nx):
         for j in range(nz):
-            if i <= N: 
+            if i < N: 
                 A[j, i] *= np.exp(-((fator * (N - i)) ** 2))
             elif i >= nx - N:  
                 A[j, i] *= np.exp(-((fator * (i - (nx - N))) ** 2))
@@ -66,6 +60,7 @@ def borda (nx,nz,fator = 0.015, N = 100):
 
     return A
 
+
 @numba.jit(parallel=True, nopython=True)
 def marcha_no_espaço(u_anterior, u, u_posterior, nx, nz, c, dt, dx, dz):
     for i in numba.prange(2, nx - 3):
@@ -75,7 +70,7 @@ def marcha_no_espaço(u_anterior, u, u_posterior, nx, nz, c, dt, dx, dz):
             u_posterior[j, i] = (c[j, i] ** 2) * (dt ** 2) * (pxx + pzz) + 2 * u[j, i] - u_anterior[j, i]
     return u_posterior
 
-def marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, c, recx, recz,dt, A, shot_x, shot_z, dx, dz):
+def marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, c, recx, recz, dt, A, shot_x, shot_z, dx, dz):
     isx = np.round(shot_x / dx).astype(int)
     isz = np.round(shot_z / dz).astype(int)
     sism = np.zeros((nt, nx))
@@ -127,32 +122,40 @@ def salvar_sismograma(sism):
     print(f"Sismograma salvo em: D:/GitHub/Acousticwave/sismograma_{sism.shape}.bin")
 
 
-receiverTable = pd.read_csv('d:/GitHub/Geofisica/receivers.csv')
-sourceTable = pd.read_csv('d:/GitHub/Geofisica/sources.csv')
+receiverTable = pd.read_csv("d:/GitHub/Geofisica/receivers.csv")
+sourceTable = pd.read_csv("d:/GitHub/Geofisica/sources.csv")
 rec_x = receiverTable['coordx'].to_numpy()
 rec_z = receiverTable['coordz'].to_numpy()
 shot_x = sourceTable['coordx'].to_numpy()
 shot_z = sourceTable['coordz'].to_numpy()
-
 L  = 10000
 H = 3000
 T = 2 
 dt = 0.001 
-N = 100
-nx = 383
-nz = 141
+N = 50
+nx = 2000
+nz = 600
 nx_abc = nx + 2*N
 nz_abc = nz + 2*N
 dx = L/nx
 dz = H/nz
+shot_x = np.clip(shot_x, (N+1)* dx, (nx + N - 2) * dx)
+shot_z = np.clip(shot_z, (N+1) * dz, (nz + N - 2) * dz)
+rec_x= np.clip(rec_x, (N+1)* dx, (nx + N - 2) * dx)
+rec_z= np.clip(rec_z, (N+1)* dz, (nz + N - 2) * dz)
 f0 = 60
 x = np.arange(0,L+dx,dx)
 z = np.arange(0,H+dz,dz)
 t = np.arange(0,T+dt,dt)
 nt = len(t)
-c = ler_modelo('D:/GitHub/Acousticwave/marmousi_vp_383x141.bin', (383, 141))
-c_expand = expand_vp(c,nx_abc,nz_abc, N)
 source = ricker(f0, t)
+c = v(nx,nz)
+#c = ler_modelo('D:/GitHub/Acousticwave/marmousi_vp_383x141.bin', (383, 141))
+c_expand = expand_vp(c,nx_abc,nz_abc, N)
+
+plt.figure()
+plt.imshow(c_expand,aspect='equal')
+plt.show()
 
 #critérios de dispersão e estabilidade
 vp_min= np.min(c_expand)
@@ -168,11 +171,10 @@ else:
     print("dx_critical = %f dx = %f" %(dx_lim,dx))
     print("fcut = %f " %(f0))
 
-
 u_anterior, u, u_posterior = ondas(nx,nz)
 recx= range(nx)
 recz = N + 10
-A = borda(nx, nz, fator=0.015, N = 100)
+A = borda(nx, nz, fator=0.015, N = 50)
 sism,sism_shot = marcha_no_tempo(u_anterior, u, u_posterior, source, nt, nx, nz, c, recx, recz,dt, A, shot_x, shot_z, dx, dz)
 plot_sismograma(sism)
 plot_shot(sism_shot)
