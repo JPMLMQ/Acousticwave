@@ -1,3 +1,4 @@
 # Auto detect text files and perform LF normalization
 * text=auto
 snapshot_3x2001x141x383.bin/* filter=lfs diff=lfs merge=lfs -text
+outputs/snapshots/* filter=lfs diff=lfs merge=lfs -text
